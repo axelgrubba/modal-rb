@@ -1,0 +1,6 @@
+[submodule "modal-client"]
+	path = modal-client
+	url = https://github.com/modal-labs/modal-client.git
+[submodule "modal-rb/modal-client"]
+	path = modal-rb/modal-client
+	url = https://github.com/modal-labs/modal-client.git

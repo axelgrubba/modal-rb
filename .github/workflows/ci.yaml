@@ -1,0 +1,68 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: modal-rb/
+
+    strategy:
+      fail-fast: true
+      matrix:
+        ruby-version: [3.4]
+
+    env:
+      BUNDLE_JOBS: 4
+      BUNDLE_RETRY: 3
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          submodules: recursive
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y build-essential libssl-dev libreadline-dev zlib1g-dev
+
+      - name: Set up Ruby and Bundler
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby-version }}
+          bundler-cache: true
+
+      - name: Install dependencies
+        run: bundle install
+
+      - name: Run tests
+        env:
+          MODAL_PROFILE: "modal-rb-testing"
+          MODAL_TOKEN_ID: "test-token-id"
+          MODAL_TOKEN_SECRET: "test-token-secret"
+        run: rake test_ci
+
+      - name: Build gem
+        run: rake build
+
+      - name: Publish to RubyGems
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        env:
+          GEM_HOST_API_KEY: ${{ secrets.RUBYGEMS_AUTH_TOKEN }}
+        run: |
+          mkdir -p "$HOME/.gem"
+          echo "---\n:rubygems_api_key: ${GEM_HOST_API_KEY}" > "$HOME/.gem/credentials"
+          chmod 0600 "$HOME/.gem/credentials"
+
+          gem build modal-rb.gemspec
+          gem push modal-rb-*.gem
