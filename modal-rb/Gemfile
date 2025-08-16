@@ -12,5 +12,4 @@ group :development, :test do
   gem "webmock", "~> 3.20"
   gem "simplecov", "~> 0.22.0"
   gem "standard", ">= 1.35.1"
-  gem "solargraph", "~> 0.56.1", require: false
 end

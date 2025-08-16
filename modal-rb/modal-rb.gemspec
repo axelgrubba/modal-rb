@@ -2,7 +2,7 @@ require "rake"
 
 Gem::Specification.new do |s|
   s.name = "modal-rb"
-  s.version = "0.0.0"
+  s.version = "0.0.1"
   s.required_ruby_version = ">= 3.4.0"
   s.summary = "Interact with modal from your Ruby code"
   s.description = "A gem to interact with Modal from your Ruby, Rails, or Sinatra applications"
