@@ -16,4 +16,6 @@ module Modal
   class QueueFullError < ModalError; end
 
   class SandboxFilesystemError < ModalError; end
+
+  class SandboxTimeoutError < ModalError; end
 end

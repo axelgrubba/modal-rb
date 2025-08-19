@@ -25,6 +25,25 @@ module Modal
       cpu_milli = (options[:cpu] || 0.125) * 1000
       memory_mb = options[:memory] || 128
       command = options[:command] || ["sleep", "48h"]
+      encrypted_ports = options[:encrypted_ports] || []
+      unencrypted_ports = options[:unencrypted_ports] || []
+      h2_ports = options[:h2_ports] || []
+
+      # Build open_ports array from port specifications
+      open_ports = []
+      encrypted_ports.each do |port|
+        open_ports << Modal::Client::PortSpec.new(port: port, unencrypted: false)
+      end
+      unencrypted_ports.each do |port|
+        open_ports << Modal::Client::PortSpec.new(port: port, unencrypted: true)
+      end
+      h2_ports.each do |port|
+        open_ports << Modal::Client::PortSpec.new(
+          port: port, 
+          unencrypted: false, 
+          tunnel_type: Modal::Client::TunnelType::TUNNEL_TYPE_H2
+        )
+      end
 
       request = Modal::Client::SandboxCreateRequest.new(
         app_id: @app_id,
@@ -38,7 +57,8 @@ module Modal
           resources: Modal::Client::Resources.new(
             milli_cpu: cpu_milli.round,
             memory_mb: memory_mb.round
-          )
+          ),
+          open_ports: Modal::Client::PortSpecs.new(ports: open_ports)
         )
       )
 

@@ -10,6 +10,7 @@ module Modal
     def initialize(sandbox_id)
       @sandbox_id = sandbox_id
       @task_id = nil
+      @tunnels_cache = nil
 
       @stdin = ModalWriteStream.new(SandboxInputStream.new(sandbox_id))
       @stdout = ModalReadStream.new(SandboxOutputStream.new(sandbox_id, Modal::Client::FileDescriptor::FILE_DESCRIPTOR_STDOUT))
@@ -64,6 +65,35 @@ module Modal
         end
         sleep(1) # Poll every second
       end
+    end
+
+    def tunnels(timeout: 50)
+      return @tunnels_cache if @tunnels_cache
+
+      request = Modal::Client::SandboxGetTunnelsRequest.new(
+        sandbox_id: @sandbox_id,
+        timeout: timeout
+      )
+      
+      resp = Modal.client.call(:sandbox_get_tunnels, request)
+      
+      # Check if we got a timeout
+      if resp.result.status == Modal::Client::GenericResult::GenericStatus::GENERIC_STATUS_TIMEOUT
+        raise Modal::SandboxTimeoutError, "Timeout waiting for tunnels to be ready"
+      end
+
+      # Build tunnels hash keyed by container port
+      @tunnels_cache = {}
+      resp.tunnels.each do |tunnel_data|
+        @tunnels_cache[tunnel_data.container_port] = Tunnel.new(
+          tunnel_data.host,
+          tunnel_data.port,
+          tunnel_data.unencrypted_host,
+          tunnel_data.unencrypted_port
+        )
+      end
+
+      @tunnels_cache
     end
 
     private

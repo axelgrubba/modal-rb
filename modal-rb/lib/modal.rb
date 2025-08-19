@@ -10,6 +10,7 @@ module Modal
   require "modal/image"
   require "modal/function"
   require "modal/function_call"
+  require "modal/tunnel"
   require "modal/sandbox"
   require "modal/streams"
 end
