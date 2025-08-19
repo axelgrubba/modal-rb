@@ -70,6 +70,11 @@ module Modal
       Image.from_registry_internal(@app_id, tag)
     end
 
+    def image_from_dockerfile(dockerfile_path, options = {})
+      options = options.merge(app_id: @app_id)
+      Image.from_dockerfile(dockerfile_path, options)
+    end
+
     def image_from_aws_ecr(tag, secret)
       unless secret.is_a?(Secret)
         raise TypeError, "secret must be a reference to an existing Secret, e.g. `Secret.from_name('my_secret')`"

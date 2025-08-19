@@ -62,4 +62,19 @@ class TestAppSandbox < Minitest::Test
     assert_instance_of Modal::Tunnel, tunnels[8080]
     assert_equal "https://example.com", tunnels[8080].url
   end
+
+  def test_image_from_dockerfile_file_not_found
+    assert_raises(Modal::InvalidError) do
+      Modal::Image.from_dockerfile("nonexistent/Dockerfile")
+    end
+  end
+
+  def test_image_from_dockerfile_method_exists
+    assert_respond_to Modal::Image, :from_dockerfile
+  end
+
+  def test_app_image_from_dockerfile_method_exists
+    app = Modal::App.new("app_123")
+    assert_respond_to app, :image_from_dockerfile
+  end
 end

@@ -74,9 +74,9 @@ module Modal
         sandbox_id: @sandbox_id,
         timeout: timeout
       )
-      
+
       resp = Modal.client.call(:sandbox_get_tunnels, request)
-      
+
       # Check if we got a timeout
       if resp.result.status == Modal::Client::GenericResult::GenericStatus::GENERIC_STATUS_TIMEOUT
         raise Modal::SandboxTimeoutError, "Timeout waiting for tunnels to be ready"
