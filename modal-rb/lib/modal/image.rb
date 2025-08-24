@@ -54,14 +54,18 @@ module Modal
           begin
             stream_resp = Modal.client.call(:image_join_streaming, streaming_request)
 
-            if stream_resp.result && stream_resp.result.status != Modal::Client::GenericResult::GenericStatus::GENERIC_STATUS_UNSPECIFIED
-              result = stream_resp.result
-              break
+            stream_resp.each do |message|
+              if message.respond_to?(:result) && message.result && message.result.status != Modal::Client::GenericResult::GenericStatus::GENERIC_STATUS_UNSPECIFIED
+                result = message.result
+                break
+              end
+
+              if message.respond_to?(:entry_id) && message.entry_id && !message.entry_id.empty?
+                last_entry_id = message.entry_id
+              end
             end
 
-            if stream_resp.entry_id && !stream_resp.entry_id.empty?
-              last_entry_id = stream_resp.entry_id
-            end
+            break if result
           rescue => e
             puts "Error checking build status: #{e.message}"
             sleep(5)
@@ -118,15 +122,19 @@ module Modal
           begin
             stream_resp = Modal.client.call(:image_join_streaming, streaming_request)
 
-            if stream_resp.result && stream_resp.result.status != Modal::Client::GenericResult::GenericStatus::GENERIC_STATUS_UNSPECIFIED
-              result = stream_resp.result
-              metadata = stream_resp.metadata
-              break
+            stream_resp.each do |message|
+              if message.respond_to?(:result) && message.result && message.result.status != Modal::Client::GenericResult::GenericStatus::GENERIC_STATUS_UNSPECIFIED
+                result = message.result
+                metadata = message.metadata if message.respond_to?(:metadata)
+                break
+              end
+
+              if message.respond_to?(:entry_id) && message.entry_id && !message.entry_id.empty?
+                last_entry_id = message.entry_id
+              end
             end
 
-            if stream_resp.entry_id && !stream_resp.entry_id.empty?
-              last_entry_id = stream_resp.entry_id
-            end
+            break if result
           rescue => e
             puts "Error checking build status: #{e.message}"
             sleep(5)
