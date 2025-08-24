@@ -11,6 +11,8 @@ module Modal
       @sandbox_id = sandbox_id
       @task_id = nil
       @tunnels_cache = nil
+      @exit_code = nil
+      @completed = false
 
       @stdin = ModalWriteStream.new(SandboxInputStream.new(sandbox_id))
       @stdout = ModalReadStream.new(SandboxOutputStream.new(sandbox_id, Modal::Client::FileDescriptor::FILE_DESCRIPTOR_STDOUT))
@@ -60,11 +62,34 @@ module Modal
           timeout: 55 # seconds
         )
         resp = Modal.client.call(:sandbox_wait, request)
-        if resp.completed
-          return resp.exit_code || 0
+        if resp.result && resp.result.status != :GENERIC_STATUS_UNSPECIFIED
+          @completed = true
+          @exit_code = resp.result.exitcode || 0
+          return @exit_code
         end
         sleep(1) # Poll every second
       end
+    end
+
+    def poll
+      return @exit_code if @completed
+
+      request = Modal::Client::SandboxWaitRequest.new(
+        sandbox_id: @sandbox_id,
+        timeout: 1 # Short timeout for non-blocking behavior
+      )
+      resp = Modal.client.call(:sandbox_wait, request)
+      if resp.result && resp.result.status != :GENERIC_STATUS_UNSPECIFIED
+        @completed = true
+        @exit_code = resp.result.exitcode || 0
+        return @exit_code
+      end
+      nil # Still running
+    end
+
+    def returncode
+      return @exit_code if @completed
+      poll # Check current status
     end
 
     def tunnels(timeout: 50)
@@ -170,6 +195,9 @@ module Modal
 
     def initialize(exec_id, mode)
       @exec_id = exec_id
+      @exit_code = nil
+      @completed = false
+      
       @stdin = ModalWriteStream.new(ContainerProcessInputStream.new(exec_id))
 
       if mode == "text"
@@ -189,10 +217,33 @@ module Modal
         )
         resp = Modal.client.call(:container_exec_wait, request)
         if resp.completed
-          return resp.exit_code || 0
+          @completed = true
+          @exit_code = resp.exit_code || 0
+          return @exit_code
         end
         sleep(1) # Poll every second
       end
+    end
+
+    def poll
+      return @exit_code if @completed
+
+      request = Modal::Client::ContainerExecWaitRequest.new(
+        exec_id: @exec_id,
+        timeout: 1 # Short timeout for non-blocking behavior
+      )
+      resp = Modal.client.call(:container_exec_wait, request)
+      if resp.completed
+        @completed = true
+        @exit_code = resp.exit_code || 0
+        return @exit_code
+      end
+      nil # Still running
+    end
+
+    def returncode
+      return @exit_code if @completed
+      poll # Check current status
     end
   end
 
