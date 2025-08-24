@@ -28,6 +28,7 @@ module Modal
       encrypted_ports = options[:encrypted_ports] || []
       unencrypted_ports = options[:unencrypted_ports] || []
       h2_ports = options[:h2_ports] || []
+      secrets = options[:secrets] || []
 
       # Build open_ports array from port specifications
       open_ports = []
@@ -45,6 +46,18 @@ module Modal
         )
       end
 
+      # Extract secret IDs from Secret objects
+      secret_ids = secrets.map do |secret|
+        case secret
+        when Secret
+          secret.secret_id
+        when String
+          secret
+        else
+          raise TypeError, "secrets must contain Secret objects or strings, got #{secret.class}"
+        end
+      end
+
       request = Modal::Client::SandboxCreateRequest.new(
         app_id: @app_id,
         definition: Modal::Client::Sandbox.new(
@@ -58,7 +71,8 @@ module Modal
             milli_cpu: cpu_milli.round,
             memory_mb: memory_mb.round
           ),
-          open_ports: Modal::Client::PortSpecs.new(ports: open_ports)
+          open_ports: Modal::Client::PortSpecs.new(ports: open_ports),
+          secret_ids: secret_ids
         )
       )
 

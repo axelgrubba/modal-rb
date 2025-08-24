@@ -13,4 +13,5 @@ module Modal
   require "modal/tunnel"
   require "modal/sandbox"
   require "modal/streams"
+  require "modal/secret"
 end
