@@ -14,4 +14,6 @@ module Modal
   require "modal/sandbox"
   require "modal/streams"
   require "modal/secret"
+  require "modal/blob_utils"
+  require "modal/file_watch"
 end

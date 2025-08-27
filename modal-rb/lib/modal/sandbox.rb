@@ -50,6 +50,104 @@ module Modal
       SandboxFile.new(resp.response.file_open_response.file_descriptor, @task_id)
     end
 
+    def ls(path)
+      ensure_task_id
+      
+      request = Modal::Client::ContainerFilesystemExecRequest.new(
+        file_ls_request: Modal::Client::ContainerFileLsRequest.new(
+          path: path
+        ),
+        task_id: @task_id
+      )
+      resp = run_filesystem_exec(request)
+      
+      # Parse the output to get list of files/directories
+      output = resp.response.output || []
+      files = []
+      output.each do |line|
+        next if line.strip.empty?
+        files << line.strip
+      end
+      files
+    end
+
+    def mkdir(path, options = {})
+      ensure_task_id
+      parents = options[:parents] || false
+      
+      request = Modal::Client::ContainerFilesystemExecRequest.new(
+        file_mkdir_request: Modal::Client::ContainerFileMkdirRequest.new(
+          path: path,
+          make_parents: parents
+        ),
+        task_id: @task_id
+      )
+      run_filesystem_exec(request)
+      nil
+    end
+
+    def rm(path, options = {})
+      ensure_task_id
+      recursive = options[:recursive] || false
+      
+      request = Modal::Client::ContainerFilesystemExecRequest.new(
+        file_rm_request: Modal::Client::ContainerFileRmRequest.new(
+          path: path,
+          recursive: recursive
+        ),
+        task_id: @task_id
+      )
+      run_filesystem_exec(request)
+      nil
+    end
+
+    def copy_from(remote_path, local_path, options = {})
+      ensure_task_id
+      
+      # Check if remote path exists
+      begin
+        file = open(remote_path, "r")
+        content = file.read
+        file.close
+        
+        # Write to local file
+        File.open(local_path, "w") { |f| f.write(content) }
+        
+        return content.length
+      rescue => e
+        raise Modal::SandboxFilesystemError.new("Failed to copy file: #{e.message}")
+      end
+    end
+
+    def download_archive(paths, local_file, options = {})
+      ensure_task_id
+      
+      # Create temporary archive in sandbox
+      archive_path = "/tmp/modal_download_#{Time.now.to_f.to_s.gsub('.', '')}.tar.gz"
+      
+      # Build tar command
+      cmd = ["tar", "-czf", archive_path] + Array(paths)
+      result = exec(cmd)
+      exit_code = result.wait
+      
+      if exit_code != 0
+        raise Modal::SandboxFilesystemError.new("Failed to create archive (exit code: #{exit_code})")
+      end
+      
+      # Read archive and write locally
+      archive_file = open(archive_path, "rb")
+      archive_data = archive_file.read
+      archive_file.close
+      
+      # Clean up remote archive
+      exec(["rm", archive_path]).wait rescue nil
+      
+      # Write to local file
+      File.open(local_file, "wb") { |f| f.write(archive_data) }
+      
+      archive_data.length
+    end
+
     def terminate
       request = Modal::Client::SandboxTerminateRequest.new(sandbox_id: @sandbox_id)
       Modal.client.call(:sandbox_terminate, request)
@@ -121,7 +219,115 @@ module Modal
       @tunnels_cache
     end
 
+    def watch(path, options = {}, &block)
+      ensure_task_id
+      
+      timeout = options[:timeout] || 0
+      recursive = options[:recursive] || false
+      filter_events = options[:filter] || []
+      
+      request = Modal::Client::ContainerFilesystemExecRequest.new(
+        file_watch_request: Modal::Client::ContainerFileWatchRequest.new(
+          path: path,
+          timeout_secs: timeout,
+          recursive: recursive
+        ),
+        task_id: @task_id
+      )
+      
+      resp = Modal.client.call(:container_filesystem_exec, request)
+      exec_id = resp.exec_id
+      
+      if block_given?
+        watch_with_callback(exec_id, &block)
+      else
+        watch_events(exec_id)
+      end
+    end
+
     private
+
+    def watch_with_callback(exec_id, &block)
+      Thread.new do
+        begin
+          events = watch_events(exec_id)
+          events.each { |event| block.call(event) }
+        rescue => e
+          puts "Watch error: #{e.message}"
+        end
+      end
+    end
+
+    def watch_events(exec_id)
+      events = []
+      completed = false
+      retries = 10
+
+      while !completed && retries > 0
+        begin
+          output_request = Modal::Client::ContainerFilesystemExecGetOutputRequest.new(
+            exec_id: exec_id,
+            timeout: 30
+          )
+
+          stream = Modal.client.call(:container_filesystem_exec_get_output, output_request)
+
+          stream.each do |batch|
+            if batch.respond_to?(:output) && batch.output && batch.output.any?
+              batch.output.each do |event_data|
+                event = parse_watch_event(event_data)
+                events << event if event
+              end
+            end
+
+            if batch.respond_to?(:error) && batch.error
+              raise SandboxFilesystemError.new("Watch failed: #{batch.error.error_message}")
+            end
+
+            if batch.respond_to?(:eof) && batch.eof
+              completed = true
+              break
+            end
+          end
+
+          retries -= 1 unless completed
+          sleep(0.5) unless completed
+        rescue GRPC::BadStatus => e
+          if e.code == GRPC::Core::StatusCodes::DEADLINE_EXCEEDED
+            retries -= 1
+            sleep(1.0)
+            next
+          else
+            raise e
+          end
+        end
+      end
+
+      events
+    end
+
+    def parse_watch_event(event_data)
+      begin
+        require 'json'
+        
+        event_str = if event_data.is_a?(String)
+          event_data
+        elsif event_data.is_a?(Integer) || event_data.is_a?(Array)
+          Array(event_data).pack("C*").force_encoding("UTF-8")
+        else
+          event_data.to_s
+        end
+        
+        event_json = JSON.parse(event_str)
+        
+        FileWatchEvent.new(
+          type: event_json['event_type'],
+          paths: event_json['paths'] || []
+        )
+      rescue JSON::ParserError, StandardError
+        nil # Skip invalid events
+      end
+    end
 
     # Helper to run filesystem exec requests and handle output.
     def run_filesystem_exec(request)
